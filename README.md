@@ -56,15 +56,28 @@ pip install -r requirements.txt
 
 cp .env.example .env
 ```
+Cấu hình `.env`:
+- `CAMERA_HOST`: IP camera
+- `CAMERA_PORT_RTSP`: cổng RTSP (mặc định 554)
+- `CAMERA_PORT_ONVIF`: cổng ONVIF (mặc định 80)
+- `CAMERA_USERNAME` / `CAMERA_PASSWORD`: credentials nếu camera yêu cầu
 
-### Chạy lần đầu
+### Chạy lần đầu: 
 
+#### Giao diện Qt thân thiện, có ô nhập RTSP
 ```bash
 python -m jetson_zoom
 ```
 
-Mặc định app sẽ mở **giao diện Qt** (thân thiện, có ô nhập RTSP). Nếu muốn dùng giao diện tối giản OpenCV:
-`python -m jetson_zoom --ui opencv`
+#### Giao diện tối giản OpenCV:
+```bash
+python -m jetson_zoom --ui opencv
+```
+Mapping mặc định trong `EventLoop.handle_key_press()`:
+- `i`: Zoom in
+- `o`: Zoom out
+- `s`: Stop
+- `q`: Quit
 
 Nếu máy chưa cài được PyQt, app sẽ tự fallback sang UI OpenCV và log cảnh báo.
 
@@ -74,14 +87,6 @@ Hoặc cài editable để có lệnh `jetson-zoom`:
 pip install -e .
 jetson-zoom
 ```
-
-## Điều khiển phím (khi tích hợp input/UI)
-
-Mapping mặc định trong `EventLoop.handle_key_press()`:
-- `i`: Zoom in
-- `o`: Zoom out
-- `s`: Stop
-- `q`: Quit
 
 Input/hiển thị mặc định dùng **OpenCV window** (phím `i/o/s/q`). Nếu bạn muốn tích hợp UI khác (PyQt, v.v.), có thể gọi trực tiếp `EventLoop.handle_key_press()`.
 
