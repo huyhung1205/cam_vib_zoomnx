@@ -34,8 +34,8 @@ deactivate
 
 ### Cài dependencies & cấu hình
 
-**Windows (PowerShell)**
-```powershell
+**Windows (Command Prompt)**
+```bash
 python -m venv .venv
 .\.venv\Scripts\pip install -r requirements.txt
 
