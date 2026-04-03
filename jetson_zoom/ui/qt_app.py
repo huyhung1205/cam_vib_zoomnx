@@ -68,6 +68,11 @@ class MainWindow:
         self.paths = paths
         self.controller = AppController()
         self._saving = False
+        self._connect_worker: Optional[object] = None
+        self._disconnect_worker: Optional[object] = None
+        self._connect_state: str = "idle"
+        self._connect_error: Optional[str] = None
+        self._disconnect_done: bool = False
 
         self.window = QtWidgets.QMainWindow()
         self.window.setWindowTitle("JetsonZoom")
@@ -111,6 +116,10 @@ class MainWindow:
         mouse_press_type = getattr(getattr(QtCore.QEvent, "Type", QtCore.QEvent), "MouseButtonPress")
         mouse_release_type = getattr(getattr(QtCore.QEvent, "Type", QtCore.QEvent), "MouseButtonRelease")
         mouse_move_type = getattr(getattr(QtCore.QEvent, "Type", QtCore.QEvent), "MouseMove")
+        left_button = _qt_enum(QtCore, "MouseButton", "LeftButton")
+        align_center = _qt_enum(QtCore, "AlignmentFlag", "AlignCenter")
+        align_right = _qt_enum(QtCore, "AlignmentFlag", "AlignRight")
+        align_bottom = _qt_enum(QtCore, "AlignmentFlag", "AlignBottom")
 
         class _VideoInputFilter(QtCore.QObject):
             def __init__(self, on_wheel, on_press, on_move, on_release):
@@ -134,14 +143,277 @@ class MainWindow:
                     return False
                 return False
 
-        central = QtWidgets.QWidget()
-        root = QtWidgets.QHBoxLayout(central)
+        class _JoystickWidget(QtWidgets.QFrame):
+            def __init__(self, on_vector, on_release, parent=None):
+                super().__init__(parent)
+                self._on_vector = on_vector
+                self._on_release = on_release
+                self._vector = (0.0, 0.0)
+                self._active = False
+                self.setObjectName("joystickWidget")
+                self.setFixedSize(220, 220)
+                self.setMouseTracking(True)
+                self.setCursor(_qt_enum(QtCore, "CursorShape", "CrossCursor"))
+                self.setStyleSheet(
+                    """
+                    QFrame#joystickWidget {
+                        background: rgba(8, 14, 24, 190);
+                        border: 1px solid rgba(125, 211, 252, 120);
+                        border-radius: 110px;
+                    }
+                    """
+                )
 
-        # Left: controls
-        left = QtWidgets.QVBoxLayout()
-        root.addLayout(left, 0)
+            def sizeHint(self):
+                return self.size()
+
+            def _event_xy(self, event) -> tuple[float, float]:
+                try:
+                    pos = event.position()
+                    return float(pos.x()), float(pos.y())
+                except Exception:
+                    pos = event.pos()
+                    return float(pos.x()), float(pos.y())
+
+            def _vector_from_xy(self, x: float, y: float) -> tuple[float, float]:
+                radius = min(self.width(), self.height()) / 2.0 - 18.0
+                if radius <= 1.0:
+                    return 0.0, 0.0
+
+                cx = self.width() / 2.0
+                cy = self.height() / 2.0
+                dx = (x - cx) / radius
+                dy = (cy - y) / radius
+                mag = (dx * dx + dy * dy) ** 0.5
+                if mag > 1.0:
+                    dx /= mag
+                    dy /= mag
+                if abs(dx) < 0.08:
+                    dx = 0.0
+                if abs(dy) < 0.08:
+                    dy = 0.0
+                return dx, dy
+
+            def _commit(self, x: float, y: float) -> None:
+                self._vector = self._vector_from_xy(x, y)
+                try:
+                    self._on_vector(self._vector[0], self._vector[1])
+                except Exception:
+                    pass
+                self.update()
+
+            def mousePressEvent(self, event):
+                if event.button() != left_button:
+                    return super().mousePressEvent(event)
+                self._active = True
+                self._commit(*self._event_xy(event))
+                try:
+                    event.accept()
+                except Exception:
+                    pass
+
+            def mouseMoveEvent(self, event):
+                if not self._active:
+                    return super().mouseMoveEvent(event)
+                try:
+                    if not (event.buttons() & left_button):
+                        return super().mouseMoveEvent(event)
+                except Exception:
+                    return super().mouseMoveEvent(event)
+                self._commit(*self._event_xy(event))
+                try:
+                    event.accept()
+                except Exception:
+                    pass
+
+            def mouseReleaseEvent(self, event):
+                if event.button() != left_button:
+                    return super().mouseReleaseEvent(event)
+                self._active = False
+                self._vector = (0.0, 0.0)
+                self.update()
+                try:
+                    self._on_release()
+                except Exception:
+                    pass
+                try:
+                    event.accept()
+                except Exception:
+                    pass
+
+            def leaveEvent(self, event):
+                if self._active:
+                    self._active = False
+                    self._vector = (0.0, 0.0)
+                    self.update()
+                    try:
+                        self._on_release()
+                    except Exception:
+                        pass
+                try:
+                    super().leaveEvent(event)
+                except Exception:
+                    pass
+
+            def paintEvent(self, event):
+                painter = QtGui.QPainter(self)
+                try:
+                    painter.setRenderHint(QtGui.QPainter.RenderHint.Antialiasing)
+                except Exception:
+                    painter.setRenderHint(QtGui.QPainter.Antialiasing)
+
+                rect = self.rect().adjusted(12, 12, -12, -12)
+                center = rect.center()
+                base_radius = min(rect.width(), rect.height()) / 2.0
+                outer_radius = base_radius - 4.0
+                stick_radius = 28.0
+
+                painter.setPen(_qt_enum(QtCore, "PenStyle", "NoPen"))
+                painter.setBrush(QtGui.QColor(255, 255, 255, 7))
+                painter.drawEllipse(center, int(outer_radius), int(outer_radius))
+
+                painter.setBrush(QtGui.QColor(255, 255, 255, 12))
+                painter.drawEllipse(center, int(base_radius * 0.72), int(base_radius * 0.72))
+
+                painter.setPen(QtGui.QPen(QtGui.QColor(255, 255, 255, 35), 2))
+                painter.drawLine(center.x() - int(base_radius * 0.55), center.y(), center.x() + int(base_radius * 0.55), center.y())
+                painter.drawLine(center.x(), center.y() - int(base_radius * 0.55), center.x(), center.y() + int(base_radius * 0.55))
+
+                knob_x = center.x() + int(self._vector[0] * (base_radius - stick_radius - 8.0))
+                knob_y = center.y() - int(self._vector[1] * (base_radius - stick_radius - 8.0))
+
+                painter.setPen(QtGui.QPen(QtGui.QColor(96, 165, 250, 110 if self._active else 90), 2))
+                painter.setBrush(QtGui.QColor(96, 165, 250, 110 if self._active else 78))
+                painter.drawEllipse(QtCore.QPoint(knob_x, knob_y), int(stick_radius), int(stick_radius))
+
+                painter.setPen(QtGui.QPen(QtGui.QColor(255, 255, 255, 90), 1))
+                painter.drawText(self.rect(), align_center, "PTZ\nJOYSTICK")
+
+        class _VideoOverlayHost(QtWidgets.QWidget):
+            def __init__(self, on_wheel, on_press, on_move, on_release, parent=None):
+                super().__init__(parent)
+                self._on_wheel = on_wheel
+                self._on_press = on_press
+                self._on_move = on_move
+                self._on_release = on_release
+                self.setMouseTracking(True)
+                self.setStyleSheet("background: transparent;")
+
+            def eventFilter(self, obj, event):
+                try:
+                    if event.type() == wheel_event_type:
+                        return bool(self._on_wheel(event))
+                    if event.type() == mouse_press_type:
+                        return bool(self._on_press(event))
+                    if event.type() == mouse_move_type:
+                        return bool(self._on_move(event))
+                    if event.type() == mouse_release_type:
+                        return bool(self._on_release(event))
+                except Exception:
+                    return False
+                return False
+
+        class _VideoStageFilter(QtCore.QObject):
+            def __init__(self, overlay_host):
+                super().__init__()
+                self._overlay_host = overlay_host
+
+            def eventFilter(self, obj, event):
+                event_type = event.type()
+                resize_type = getattr(getattr(QtCore.QEvent, "Type", QtCore.QEvent), "Resize")
+                show_type = getattr(getattr(QtCore.QEvent, "Type", QtCore.QEvent), "Show")
+                if event_type in {resize_type, show_type}:
+                    try:
+                        self._overlay_host.setGeometry(obj.rect())
+                        self._overlay_host.raise_()
+                        self._overlay_host.show()
+                    except Exception:
+                        pass
+                return False
+
+        self._joystick_last_sent_at = 0.0
+        self._joystick_last_vec: Optional[tuple[float, float]] = None
+        self._zoom_burst_duration_ms = 500
+        self._zoom_wheel_duration_ms = 200
+        self._pt_burst_duration_ms = 400
+
+        def _on_joystick_vector(pan_x: float, pan_y: float) -> None:
+            running = self.controller.running
+            if not running:
+                return
+
+            try:
+                velocity = self.slider_pt_velocity.value() / 100.0
+            except Exception:
+                velocity = 0.5
+
+            now = time.monotonic()
+            last_vec = self._joystick_last_vec
+            if last_vec is not None and now - float(self._joystick_last_sent_at) < 0.03:
+                if abs(pan_x - last_vec[0]) < 0.02 and abs(pan_y - last_vec[1]) < 0.02:
+                    return
+
+            self._joystick_last_sent_at = now
+            self._joystick_last_vec = (pan_x, pan_y)
+
+            if hasattr(self, "label_drag_vec"):
+                self.label_drag_vec.setText(f"Joystick PT: ({pan_x:+.2f}, {pan_y:+.2f})")
+
+            try:
+                if abs(pan_x) < 0.02 and abs(pan_y) < 0.02:
+                    running.mover.stop_pan_tilt()
+                else:
+                    running.onvif.queue_pan_tilt_command(
+                        pan_x=pan_x,
+                        pan_y=pan_y,
+                        velocity=velocity,
+                        hold=True,
+                    )
+            except Exception:
+                pass
+
+        def _on_joystick_release() -> None:
+            running = self.controller.running
+            if not running:
+                return
+            self._joystick_last_vec = None
+            if hasattr(self, "label_drag_vec"):
+                self.label_drag_vec.setText("Joystick PT: idle")
+            try:
+                running.mover.stop_pan_tilt()
+            except Exception:
+                pass
+
+        central = QtWidgets.QWidget()
+        central.setObjectName("jetsonZoomRoot")
+        root = QtWidgets.QVBoxLayout(central)
+        root.setContentsMargins(12, 12, 12, 12)
+        root.setSpacing(10)
+
+        splitter = QtWidgets.QSplitter(_qt_enum(QtCore, "Orientation", "Horizontal"))
+        splitter.setChildrenCollapsible(False)
+        splitter.setObjectName("mainSplitter")
+        root.addWidget(splitter, 1)
+
+        left_scroll = QtWidgets.QScrollArea()
+        left_scroll.setWidgetResizable(True)
+        frame_shape = getattr(
+            QtWidgets.QFrame,
+            "NoFrame",
+            getattr(getattr(QtWidgets.QFrame, "Shape", QtWidgets.QFrame), "NoFrame"),
+        )
+        left_scroll.setFrameShape(frame_shape)
+        left_scroll.setObjectName("leftScroll")
+        left_content = QtWidgets.QWidget()
+        left_content.setObjectName("leftContent")
+        left = QtWidgets.QVBoxLayout(left_content)
+        left.setContentsMargins(0, 0, 0, 0)
+        left.setSpacing(12)
+        left_scroll.setWidget(left_content)
+        splitter.addWidget(left_scroll)
 
         group_source = QtWidgets.QGroupBox("Nguồn camera (name + RTSP)")
+        group_source.setObjectName("cardGroup")
         left.addWidget(group_source)
         form = QtWidgets.QFormLayout(group_source)
 
@@ -172,6 +444,7 @@ class MainWindow:
         form.addRow("", row_buttons)
 
         group_onvif = QtWidgets.QGroupBox("ONVIF / PTZ")
+        group_onvif.setObjectName("cardGroup")
         left.addWidget(group_onvif)
         form2 = QtWidgets.QFormLayout(group_onvif)
 
@@ -179,10 +452,11 @@ class MainWindow:
         self.input_host.textChanged.connect(lambda: self._on_connection_field_changed())
         form2.addRow("Host", self.input_host)
 
-        self.input_onvif_port = QtWidgets.QSpinBox()
-        self.input_onvif_port.setRange(1, 65535)
-        self.input_onvif_port.setValue(80)
-        self.input_onvif_port.valueChanged.connect(lambda: self._schedule_save())
+        self.input_onvif_port = QtWidgets.QLineEdit()
+        port_validator = QtGui.QIntValidator(1, 65535, self.input_onvif_port)
+        self.input_onvif_port.setValidator(port_validator)
+        self.input_onvif_port.setText("80")
+        self.input_onvif_port.textChanged.connect(lambda: self._schedule_save())
         form2.addRow("Port", self.input_onvif_port)
 
         self.input_user = QtWidgets.QLineEdit()
@@ -192,10 +466,24 @@ class MainWindow:
         self.input_pass = QtWidgets.QLineEdit()
         echo_mode_group = getattr(QtWidgets.QLineEdit, "EchoMode", QtWidgets.QLineEdit)
         self.input_pass.setEchoMode(getattr(echo_mode_group, "Password"))
+        self.input_pass.setTextMargins(0, 0, 0, 0)
         self.input_pass.textChanged.connect(lambda: self._on_connection_field_changed())
-        form2.addRow("Pass", self.input_pass)
+        pass_row = QtWidgets.QWidget()
+        pass_layout = QtWidgets.QHBoxLayout(pass_row)
+        pass_layout.setContentsMargins(0, 0, 0, 0)
+        pass_layout.setSpacing(8)
+        pass_layout.addWidget(self.input_pass, 1)
+        self.btn_toggle_pass = QtWidgets.QToolButton()
+        self.btn_toggle_pass.setCheckable(True)
+        self.btn_toggle_pass.setChecked(False)
+        self.btn_toggle_pass.setText("👁")
+        self.btn_toggle_pass.setToolTip("Hiển thị / ẩn mật khẩu")
+        self.btn_toggle_pass.toggled.connect(self._on_toggle_password_visible)
+        pass_layout.addWidget(self.btn_toggle_pass)
+        form2.addRow("Pass", pass_row)
 
         group_run = QtWidgets.QGroupBox("Chạy / Kết nối")
+        group_run.setObjectName("cardGroup")
         left.addWidget(group_run)
         row_run = QtWidgets.QVBoxLayout(group_run)
 
@@ -211,6 +499,7 @@ class MainWindow:
         row_run.addWidget(self.label_status)
 
         group_zoom = QtWidgets.QGroupBox("Zoom (quang học qua ONVIF)")
+        group_zoom.setObjectName("cardGroup")
         left.addWidget(group_zoom)
         z = QtWidgets.QVBoxLayout(group_zoom)
 
@@ -228,7 +517,7 @@ class MainWindow:
         self._hold_threshold_s: float = 0.20
 
         self.slider_velocity = QtWidgets.QSlider(_qt_enum(QtCore, "Orientation", "Horizontal"))
-        self.slider_velocity.setRange(10, 100)  # 0.10 .. 1.00
+        self.slider_velocity.setRange(10, 100)
         self.slider_velocity.setValue(50)
         self.slider_velocity.setToolTip("Vận tốc tương đối (0.10 = chậm, 1.00 = nhanh).")
         self.label_velocity = QtWidgets.QLabel("Tốc độ (Velocity): 0.50")
@@ -238,39 +527,8 @@ class MainWindow:
         z.addWidget(self.label_velocity)
         z.addWidget(self.slider_velocity)
 
-        self.spin_duration = QtWidgets.QSpinBox()
-        self.spin_duration.setRange(50, 5000)
-        self.spin_duration.setValue(500)
-        self.spin_duration.setToolTip("Chế độ click/burst: gửi lệnh N mili-giây rồi STOP.")
-        z.addWidget(QtWidgets.QLabel("Thời lượng (ms)"))
-        z.addWidget(self.spin_duration)
-
-        self.spin_wheel_duration = QtWidgets.QSpinBox()
-        self.spin_wheel_duration.setRange(50, 2000)
-        self.spin_wheel_duration.setValue(200)
-        self.spin_wheel_duration.setToolTip("Mỗi nấc con lăn sẽ zoom 1 nhịp với thời lượng này, rồi STOP.")
-        z.addWidget(QtWidgets.QLabel("Con lăn: bước (ms)"))
-        z.addWidget(self.spin_wheel_duration)
-
-        row_zoom_btns = QtWidgets.QHBoxLayout()
-        self.btn_zoom_in = QtWidgets.QPushButton("Zoom In")
-        self.btn_zoom_out = QtWidgets.QPushButton("Zoom Out")
-        self.btn_zoom_stop = QtWidgets.QPushButton("Stop")
-        self.btn_zoom_in.pressed.connect(lambda: self._on_zoom_press("in"))
-        self.btn_zoom_in.released.connect(lambda: self._on_zoom_release())
-        self.btn_zoom_in.clicked.connect(lambda: self._on_zoom_click("in"))
-
-        self.btn_zoom_out.pressed.connect(lambda: self._on_zoom_press("out"))
-        self.btn_zoom_out.released.connect(lambda: self._on_zoom_release())
-        self.btn_zoom_out.clicked.connect(lambda: self._on_zoom_click("out"))
-
-        self.btn_zoom_stop.clicked.connect(lambda: self._on_zoom("stop"))
-        row_zoom_btns.addWidget(self.btn_zoom_in)
-        row_zoom_btns.addWidget(self.btn_zoom_out)
-        row_zoom_btns.addWidget(self.btn_zoom_stop)
-        z.addLayout(row_zoom_btns)
-
         group_pt = QtWidgets.QGroupBox("Pan/Tilt (quay ngang/dọc qua ONVIF)")
+        group_pt.setObjectName("cardGroup")
         left.addWidget(group_pt)
         pt = QtWidgets.QVBoxLayout(group_pt)
 
@@ -294,7 +552,7 @@ class MainWindow:
         self._pt_hold_started_at: Optional[float] = None
 
         self.slider_pt_velocity = QtWidgets.QSlider(_qt_enum(QtCore, "Orientation", "Horizontal"))
-        self.slider_pt_velocity.setRange(10, 100)  # 0.10 .. 1.00
+        self.slider_pt_velocity.setRange(10, 100)
         self.slider_pt_velocity.setValue(50)
         self.slider_pt_velocity.setToolTip("Vận tốc pan/tilt tương đối (0.10 = chậm, 1.00 = nhanh).")
         self.label_pt_velocity = QtWidgets.QLabel("Pan/Tilt Velocity: 0.50")
@@ -304,54 +562,48 @@ class MainWindow:
         pt.addWidget(self.label_pt_velocity)
         pt.addWidget(self.slider_pt_velocity)
 
-        self.spin_pt_duration = QtWidgets.QSpinBox()
-        self.spin_pt_duration.setRange(50, 5000)
-        self.spin_pt_duration.setValue(400)
-        self.spin_pt_duration.setToolTip("Chế độ click/burst: gửi lệnh pan/tilt N mili-giây rồi STOP.")
-        pt.addWidget(QtWidgets.QLabel("Pan/Tilt Duration (ms)"))
-        pt.addWidget(self.spin_pt_duration)
-
-        grid = QtWidgets.QGridLayout()
-        self.btn_pt_up = QtWidgets.QPushButton("Up")
-        self.btn_pt_down = QtWidgets.QPushButton("Down")
-        self.btn_pt_left = QtWidgets.QPushButton("Left")
-        self.btn_pt_right = QtWidgets.QPushButton("Right")
-        self.btn_pt_stop = QtWidgets.QPushButton("Stop PT")
-
-        # Hold handlers
-        self.btn_pt_up.pressed.connect(lambda: self._on_pt_press("up"))
-        self.btn_pt_up.released.connect(lambda: self._on_pt_release())
-        self.btn_pt_down.pressed.connect(lambda: self._on_pt_press("down"))
-        self.btn_pt_down.released.connect(lambda: self._on_pt_release())
-        self.btn_pt_left.pressed.connect(lambda: self._on_pt_press("left"))
-        self.btn_pt_left.released.connect(lambda: self._on_pt_release())
-        self.btn_pt_right.pressed.connect(lambda: self._on_pt_press("right"))
-        self.btn_pt_right.released.connect(lambda: self._on_pt_release())
-
-        # Click handlers (burst mode only)
-        self.btn_pt_up.clicked.connect(lambda: self._on_pt_click("up"))
-        self.btn_pt_down.clicked.connect(lambda: self._on_pt_click("down"))
-        self.btn_pt_left.clicked.connect(lambda: self._on_pt_click("left"))
-        self.btn_pt_right.clicked.connect(lambda: self._on_pt_click("right"))
-        self.btn_pt_stop.clicked.connect(lambda: self._on_pt_stop())
-
-        grid.addWidget(self.btn_pt_up, 0, 1)
-        grid.addWidget(self.btn_pt_left, 1, 0)
-        grid.addWidget(self.btn_pt_stop, 1, 1)
-        grid.addWidget(self.btn_pt_right, 1, 2)
-        grid.addWidget(self.btn_pt_down, 2, 1)
-        pt.addLayout(grid)
-
         left.addStretch(1)
+        left_scroll.setMinimumWidth(340)
+        left_scroll.setMaximumWidth(520)
 
-        # Right: video
-        right = QtWidgets.QVBoxLayout()
-        root.addLayout(right, 1)
+        right_panel = QtWidgets.QFrame()
+        right_panel.setObjectName("videoCard")
+        right = QtWidgets.QVBoxLayout(right_panel)
+        right.setContentsMargins(0, 0, 0, 0)
+        right.setSpacing(12)
+
+        video_header = QtWidgets.QFrame()
+        video_header.setObjectName("videoHeader")
+        video_header_layout = QtWidgets.QHBoxLayout(video_header)
+        video_header_layout.setContentsMargins(18, 16, 18, 16)
+        video_header_layout.setSpacing(10)
+        video_title_box = QtWidgets.QVBoxLayout()
+        video_title = QtWidgets.QLabel("Video preview")
+        video_title.setObjectName("panelTitle")
+        video_hint = QtWidgets.QLabel("Joystick dưới phải để quay ngang/dọc · Lăn chuột để zoom")
+        video_hint.setObjectName("panelSubtitle")
+        video_title_box.addWidget(video_title)
+        video_title_box.addWidget(video_hint)
+        video_header_layout.addLayout(video_title_box)
+        video_header_layout.addStretch(1)
+        self.label_status_badge = QtWidgets.QLabel("Idle")
+        self.label_status_badge.setObjectName("statusChipMuted")
+        video_header_layout.addWidget(self.label_status_badge)
+        right.addWidget(video_header)
+
+        video_stage = QtWidgets.QFrame()
+        video_stage.setObjectName("videoStage")
+        video_stage_layout = QtWidgets.QStackedLayout(video_stage)
+        try:
+            video_stage_layout.setStackingMode(getattr(QtWidgets.QStackedLayout, "StackAll"))
+        except Exception:
+            pass
 
         self.video = QtWidgets.QLabel("Chưa có video")
         self.video.setMinimumSize(640, 360)
-        self.video.setAlignment(_qt_enum(QtCore, "AlignmentFlag", "AlignCenter"))
-        self.video.setStyleSheet("background: #111; color: #ddd;")
+        self.video.setAlignment(align_center)
+        self.video.setObjectName("videoSurface")
+        self.video.setStyleSheet("background: #091018; color: #cbd5e1;")
         self.video.setToolTip(
             "Lăn chuột: zoom quang học (ONVIF), nếu camera hỗ trợ.\n"
             "Giữ chuột trái + kéo: quay ngang/dọc (Pan/Tilt), nếu camera hỗ trợ."
@@ -367,19 +619,223 @@ class MainWindow:
             self._on_video_mouse_move,
             self._on_video_mouse_release,
         )
-        self.video.installEventFilter(self._video_input_filter)
-        right.addWidget(self.video, 1)
+
+        self._video_overlay_host = QtWidgets.QWidget()
+        self._video_overlay_host.setObjectName("videoOverlayHost")
+        self._video_overlay_host.setStyleSheet("background: transparent;")
+        self._video_overlay_host.setMouseTracking(True)
+        self._video_overlay_host.setAttribute(_qt_enum(QtCore, "WidgetAttribute", "WA_TransparentForMouseEvents"), False)
+        self._video_overlay_host.installEventFilter(self._video_input_filter)
+        self._video_stage_filter = _VideoStageFilter(self._video_overlay_host)
+
+        overlay_layout = QtWidgets.QVBoxLayout(self._video_overlay_host)
+        overlay_layout.setContentsMargins(16, 16, 16, 16)
+        overlay_layout.setSpacing(10)
+
+        overlay_top = QtWidgets.QHBoxLayout()
+        overlay_top.setSpacing(8)
+        self.btn_zoom_in = QtWidgets.QPushButton("Zoom +")
+        self.btn_zoom_out = QtWidgets.QPushButton("Zoom -")
+        self.btn_zoom_stop = QtWidgets.QPushButton("Stop Zoom")
+        self.btn_zoom_in.clicked.connect(lambda: self._on_zoom("in"))
+        self.btn_zoom_out.clicked.connect(lambda: self._on_zoom("out"))
+        self.btn_zoom_stop.clicked.connect(lambda: self._on_zoom("stop"))
+        overlay_top.addWidget(self.btn_zoom_in)
+        overlay_top.addWidget(self.btn_zoom_out)
+        overlay_top.addWidget(self.btn_zoom_stop)
+        overlay_top.addStretch(1)
+        overlay_layout.addLayout(overlay_top)
+
+        overlay_layout.addStretch(1)
+
+        overlay_row = QtWidgets.QHBoxLayout()
+        overlay_row.addStretch(1)
+        self.joystick = _JoystickWidget(
+            on_vector=self._on_joystick_vector,
+            on_release=self._on_joystick_release,
+        )
+        overlay_row.addWidget(self.joystick, 0, align_right | align_bottom)
+        overlay_layout.addLayout(overlay_row)
+
+        self._video_overlay_host.raise_()
+        self.joystick.raise_()
+
+        video_stage_layout.addWidget(self.video)
+        video_stage_layout.addWidget(self._video_overlay_host)
+        video_stage.installEventFilter(self._video_stage_filter)
+        self._video_overlay_host.setGeometry(video_stage.rect())
+        self._video_overlay_host.show()
+        right.addWidget(video_stage, 1)
+
+        splitter.addWidget(left_scroll)
+        splitter.addWidget(right_panel)
+        splitter.setStretchFactor(0, 0)
+        splitter.setStretchFactor(1, 1)
+        splitter.setSizes([440, 1180])
 
         self.window.setCentralWidget(central)
+        self.window.resize(1600, 960)
+        self.window.setMinimumSize(1280, 780)
+        self.window.setStyleSheet(
+            """
+            QWidget#jetsonZoomRoot {
+                background: #0b1118;
+                color: #e5eef8;
+                font-size: 12px;
+            }
+            QFrame#videoCard, QFrame#videoStage {
+                background: #111926;
+                border: 1px solid rgba(255, 255, 255, 20);
+                border-radius: 20px;
+            }
+            QFrame#videoStage {
+                background: #081018;
+            }
+            QGroupBox#cardGroup {
+                background: rgba(255, 255, 255, 0.03);
+                border: 1px solid rgba(255, 255, 255, 22);
+                border-radius: 18px;
+                margin-top: 16px;
+                padding: 14px;
+            }
+            QGroupBox#cardGroup::title {
+                subcontrol-origin: margin;
+                subcontrol-position: top left;
+                padding: 0 10px;
+                color: #dbe7f3;
+                font-weight: 600;
+            }
+            QLabel#panelSubtitle {
+                color: #96a8bb;
+            }
+            QLabel#panelTitle {
+                font-size: 18px;
+                font-weight: 700;
+                color: #eff6ff;
+            }
+            QLabel#statusChip, QLabel#statusChipMuted {
+                border-radius: 999px;
+                padding: 8px 14px;
+                font-weight: 700;
+                letter-spacing: 0.2px;
+            }
+            QLabel#statusChip {
+                background: rgba(74, 222, 128, 0.16);
+                color: #93f0ad;
+                border: 1px solid rgba(74, 222, 128, 0.26);
+            }
+            QLabel#statusChipMuted {
+                background: rgba(125, 144, 170, 0.16);
+                color: #dbe7f3;
+                border: 1px solid rgba(148, 163, 184, 0.24);
+            }
+            QLabel#videoSurface {
+                border-radius: 18px;
+            }
+            QLineEdit, QSpinBox, QComboBox {
+                background: rgba(8, 14, 22, 0.95);
+                color: #eaf2fb;
+                border: 1px solid rgba(148, 163, 184, 0.22);
+                border-radius: 10px;
+                padding: 8px 10px;
+                selection-background-color: #2563eb;
+            }
+            QLineEdit:focus, QSpinBox:focus, QComboBox:focus {
+                border: 1px solid rgba(96, 165, 250, 0.72);
+            }
+            QComboBox::drop-down {
+                border: none;
+                width: 24px;
+            }
+            QPushButton {
+                background: linear-gradient(180deg, #1f2b3a, #16202c);
+                color: #edf4fb;
+                border: 1px solid rgba(148, 163, 184, 0.18);
+                border-radius: 12px;
+                padding: 9px 14px;
+                font-weight: 600;
+                min-height: 18px;
+            }
+            QWidget#videoOverlayHost QPushButton {
+                background: rgba(15, 23, 42, 0.82);
+                border: 1px solid rgba(148, 163, 184, 0.28);
+                padding: 8px 12px;
+            }
+            QWidget#videoOverlayHost QPushButton:hover {
+                background: rgba(30, 41, 59, 0.92);
+                border-color: rgba(96, 165, 250, 0.55);
+            }
+            QPushButton:hover {
+                background: linear-gradient(180deg, #273549, #1a2432);
+                border-color: rgba(96, 165, 250, 0.42);
+            }
+            QPushButton:pressed {
+                background: #0f1724;
+            }
+            QCheckBox {
+                color: #dbe7f3;
+                spacing: 8px;
+            }
+            QCheckBox::indicator {
+                width: 16px;
+                height: 16px;
+                border-radius: 4px;
+                border: 1px solid rgba(148, 163, 184, 0.35);
+                background: rgba(8, 14, 22, 0.95);
+            }
+            QCheckBox::indicator:checked {
+                background: #4f8cff;
+                border-color: #7fb1ff;
+            }
+            QSlider::groove:horizontal {
+                height: 8px;
+                background: rgba(148, 163, 184, 0.16);
+                border-radius: 4px;
+            }
+            QSlider::handle:horizontal {
+                width: 20px;
+                margin: -7px 0;
+                border-radius: 10px;
+                background: #7fb1ff;
+            }
+            QScrollArea {
+                background: transparent;
+                border: none;
+            }
+            QScrollBar:vertical {
+                background: transparent;
+                width: 10px;
+                margin: 6px 2px 6px 2px;
+            }
+            QScrollBar::handle:vertical {
+                background: rgba(148, 163, 184, 0.35);
+                min-height: 28px;
+                border-radius: 5px;
+            }
+            QScrollBar::handle:vertical:hover {
+                background: rgba(125, 211, 252, 0.5);
+            }
+            QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
+                height: 0;
+                background: none;
+            }
+            """
+        )
 
         self._on_hold_toggled(self.check_hold.isChecked())
         self._on_auto_rtsp_toggled(self.check_auto_rtsp.isChecked())
 
     def _on_hold_toggled(self, checked: bool) -> None:
-        # Duration only applies to burst (click) mode
-        self.spin_duration.setEnabled(not checked)
-        if hasattr(self, "spin_pt_duration"):
-            self.spin_pt_duration.setEnabled(not checked)
+        # Hold mode is fully driven by press/release; no visible timing controls.
+        _ = checked
+
+    def _on_toggle_password_visible(self, checked: bool) -> None:
+        QtWidgets = self.QtWidgets
+        echo_mode_group = getattr(QtWidgets.QLineEdit, "EchoMode", QtWidgets.QLineEdit)
+        self.input_pass.setEchoMode(
+            getattr(echo_mode_group, "Normal" if checked else "Password")
+        )
+        self.btn_toggle_pass.setText("🙈" if checked else "👁")
 
     # Sources ----------------------------------------------------------------
 
@@ -434,7 +890,7 @@ class MainWindow:
 
     def _apply_config_to_inputs(self, config: ApplicationConfig) -> None:
         self.input_host.setText(config.camera.host)
-        self.input_onvif_port.setValue(config.camera.port_onvif)
+        self.input_onvif_port.setText(str(config.camera.port_onvif))
         self.input_user.setText(config.camera.username)
         self.input_pass.setText(config.camera.password)
         if config.camera.rtsp_url:
@@ -449,7 +905,7 @@ class MainWindow:
         if state.host:
             self.input_host.setText(state.host)
         if state.onvif_port:
-            self.input_onvif_port.setValue(int(state.onvif_port))
+            self.input_onvif_port.setText(str(int(state.onvif_port)))
         if state.username:
             self.input_user.setText(state.username)
         if state.password:
@@ -481,7 +937,7 @@ class MainWindow:
                 sources_file=str(self.paths.sources_file),
                 selected_source_name=self.combo_source.currentText() if self.combo_source.currentIndex() > 0 else None,
                 host=self.input_host.text().strip(),
-                onvif_port=int(self.input_onvif_port.value()),
+                onvif_port=int(self.input_onvif_port.text().strip() or 80),
                 username=self.input_user.text(),
                 password=self.input_pass.text(),
                 auto_rtsp=bool(self.check_auto_rtsp.isChecked()),
@@ -495,7 +951,7 @@ class MainWindow:
         config = ApplicationConfig.from_env()
 
         config.camera.host = self.input_host.text().strip() or config.camera.host
-        config.camera.port_onvif = int(self.input_onvif_port.value())
+        config.camera.port_onvif = int(self.input_onvif_port.text().strip() or config.camera.port_onvif)
         config.camera.username = self.input_user.text().strip()
         config.camera.password = self.input_pass.text()
 
@@ -509,21 +965,63 @@ class MainWindow:
         return config
 
     def _on_connect(self) -> None:
+        if self._connect_state == "connecting":
+            return
+
         try:
             config = self._build_config_from_inputs()
-            if not config.camera.rtsp_url:
-                self._set_status("Bạn chưa nhập RTSP URL.")
-                return
-            self.controller.start(config)
-            self._set_status("Đang chạy...")
-            self._schedule_save()
         except Exception as e:
-            self._set_status(f"Lỗi connect: {e}")
+            self._set_status(f"Lỗi cấu hình: {e}")
+            return
+
+        if not config.camera.rtsp_url:
+            self._set_status("Bạn chưa nhập RTSP URL.")
+            return
+
+        self._connect_state = "connecting"
+        self._connect_error = None
+        self._set_connection_controls_enabled(False)
+        self._set_status("Đang kết nối...")
+        if hasattr(self, "label_header_status"):
+            self.label_header_status.setText("Connecting")
+        if hasattr(self, "label_status_badge"):
+            self.label_status_badge.setText("Starting")
+
+        import threading
+
+        def _worker() -> None:
+            try:
+                self.controller.start(config)
+            except Exception as exc:
+                self._connect_error = str(exc)
+            finally:
+                self._connect_state = "done"
+
+        self._connect_worker = threading.Thread(target=_worker, name="JetsonZoomConnect", daemon=True)
+        self._connect_worker.start()
 
     def _on_disconnect(self) -> None:
-        self.controller.stop()
-        self._set_status("Đã dừng.")
-        self._schedule_save()
+        if self._disconnect_worker is not None:
+            return
+
+        self._set_connection_controls_enabled(False)
+        self._set_status("Đang dừng...")
+        if hasattr(self, "label_header_status"):
+            self.label_header_status.setText("Stopping")
+        if hasattr(self, "label_status_badge"):
+            self.label_status_badge.setText("Stopping")
+
+        import threading
+
+        def _worker() -> None:
+            try:
+                self.controller.stop()
+            finally:
+                self._disconnect_done = True
+
+        self._disconnect_done = False
+        self._disconnect_worker = threading.Thread(target=_worker, name="JetsonZoomDisconnect", daemon=True)
+        self._disconnect_worker.start()
 
     def _on_zoom(self, action: str) -> None:
         running = self.controller.running
@@ -532,7 +1030,7 @@ class MainWindow:
             return
 
         velocity = self.slider_velocity.value() / 100.0
-        duration_ms = int(self.spin_duration.value())
+        duration_ms = int(self._zoom_burst_duration_ms)
 
         if action == "in":
             running.mover.zoom_in(velocity=velocity, duration_ms=duration_ms)
@@ -572,7 +1070,7 @@ class MainWindow:
             held_s = time.monotonic() - started_at
             if held_s < self._hold_threshold_s:
                 velocity = self.slider_velocity.value() / 100.0
-                duration_ms = int(self.spin_duration.value())
+                duration_ms = int(self._zoom_burst_duration_ms)
                 if direction == "in":
                     running.mover.zoom_in(velocity=velocity, duration_ms=duration_ms)
                 else:
@@ -605,7 +1103,7 @@ class MainWindow:
         steps = max(-6, min(6, steps))
 
         velocity = self.slider_velocity.value() / 100.0
-        duration_ms = int(self.spin_wheel_duration.value())
+        duration_ms = int(self._zoom_wheel_duration_ms)
 
         duration_ms = min(2000, max(50, duration_ms * abs(steps)))
         if steps > 0:
@@ -765,6 +1263,55 @@ class MainWindow:
             pass
         return True
 
+    def _on_joystick_vector(self, pan_x: float, pan_y: float) -> None:
+        running = self.controller.running
+        if not running:
+            return
+
+        try:
+            velocity = self.slider_pt_velocity.value() / 100.0
+        except Exception:
+            velocity = 0.5
+
+        now = time.monotonic()
+        last_vec = self._joystick_last_vec
+        if last_vec is not None and now - float(self._joystick_last_sent_at) < 0.03:
+            if abs(pan_x - last_vec[0]) < 0.02 and abs(pan_y - last_vec[1]) < 0.02:
+                return
+
+        self._joystick_last_sent_at = now
+        self._joystick_last_vec = (pan_x, pan_y)
+
+        if hasattr(self, "label_drag_vec"):
+            self.label_drag_vec.setText(f"Joystick PT: ({pan_x:+.2f}, {pan_y:+.2f})")
+
+        try:
+            if abs(pan_x) < 0.02 and abs(pan_y) < 0.02:
+                running.mover.stop_pan_tilt()
+            else:
+                running.onvif.queue_pan_tilt_command(
+                    pan_x=pan_x,
+                    pan_y=pan_y,
+                    velocity=velocity,
+                    hold=True,
+                )
+        except Exception:
+            pass
+
+    def _on_joystick_release(self) -> None:
+        running = self.controller.running
+        if not running:
+            return
+
+        self._joystick_last_vec = None
+        if hasattr(self, "label_drag_vec"):
+            self.label_drag_vec.setText("Joystick PT: idle")
+
+        try:
+            running.mover.stop_pan_tilt()
+        except Exception:
+            pass
+
     # Pan/Tilt ---------------------------------------------------------------
 
     def _on_pt_press(self, action: str) -> None:
@@ -801,7 +1348,7 @@ class MainWindow:
             held_s = time.monotonic() - started_at
             if held_s < self._hold_threshold_s:
                 velocity = self.slider_pt_velocity.value() / 100.0
-                duration_ms = int(self.spin_pt_duration.value())
+                duration_ms = int(self._pt_burst_duration_ms)
                 if action == "left":
                     running.mover.pan_left(velocity=velocity, duration_ms=duration_ms)
                 elif action == "right":
@@ -822,7 +1369,7 @@ class MainWindow:
         if not running:
             return
         velocity = self.slider_pt_velocity.value() / 100.0
-        duration_ms = int(self.spin_pt_duration.value())
+        duration_ms = int(self._pt_burst_duration_ms)
         if action == "left":
             running.mover.pan_left(velocity=velocity, duration_ms=duration_ms)
         elif action == "right":
@@ -892,6 +1439,35 @@ class MainWindow:
     # Tick -------------------------------------------------------------------
 
     def _on_tick(self) -> None:
+        if self._connect_state == "done":
+            self._connect_state = "idle"
+            self._set_connection_controls_enabled(True)
+            if self._connect_error:
+                self._set_status(f"Lỗi connect: {self._connect_error}")
+                if hasattr(self, "label_header_status"):
+                    self.label_header_status.setText("Error")
+                if hasattr(self, "label_status_badge"):
+                    self.label_status_badge.setText("Error")
+                self._connect_error = None
+            else:
+                self._set_status("Đang chạy...")
+                if hasattr(self, "label_header_status"):
+                    self.label_header_status.setText("Connected")
+                if hasattr(self, "label_status_badge"):
+                    self.label_status_badge.setText("Streaming")
+                self._schedule_save()
+
+        if self._disconnect_done:
+            self._disconnect_done = False
+            self._disconnect_worker = None
+            self._set_connection_controls_enabled(True)
+            self._set_status("Đã dừng.")
+            if hasattr(self, "label_header_status"):
+                self.label_header_status.setText("Ready")
+            if hasattr(self, "label_status_badge"):
+                self.label_status_badge.setText("Idle")
+            self._schedule_save()
+
         frame = self.controller.get_latest_frame()
         if frame is not None:
             qimg = _bgr_to_qimage(self.QtGui, frame.image)
@@ -917,9 +1493,31 @@ class MainWindow:
             self.label_status.setText(
                 f"Status: running | ONVIF: {'OK' if onvif_ready else 'NO'} | ZoomCap: {zoom_cap_text} | PanTiltCap: {pt_cap_text} | Zoom.x: {zoom_text}{err_text}"
             )
+            if hasattr(self, "label_header_status"):
+                self.label_header_status.setText("Connected" if onvif_ready else "Connecting")
+            if hasattr(self, "label_status_badge"):
+                self.label_status_badge.setText("Streaming" if onvif_ready else "Booting")
+        else:
+            if hasattr(self, "label_header_status"):
+                self.label_header_status.setText("Ready")
+            if hasattr(self, "label_status_badge"):
+                self.label_status_badge.setText("Idle")
 
     def _set_status(self, text: str) -> None:
         self.label_status.setText(f"Status: {text}")
+        if hasattr(self, "label_header_status"):
+            self.label_header_status.setText(text)
+
+    def _set_connection_controls_enabled(self, enabled: bool) -> None:
+        for widget_name in (
+            "btn_connect",
+            "btn_disconnect",
+            "btn_save_source",
+            "btn_new_source",
+        ):
+            widget = getattr(self, widget_name, None)
+            if widget is not None:
+                widget.setEnabled(enabled)
 
 
 def run_qt_ui(sources_file: Path, initial_config: ApplicationConfig) -> int:
