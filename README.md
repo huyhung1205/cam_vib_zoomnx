@@ -39,13 +39,11 @@ deactivate
 python -m venv .venv
 .\.venv\Scripts\pip install -r requirements.txt
 
-copy .env.example .env
-notepad .env
+cp .env.example .env
 ```
 
 **Jetson Orin NX (Ubuntu / JetPack 5.x)**
 ```bash
-cd JetsonZoom
 sudo apt-get install -y python3-opencv
 sudo apt-get install -y python3-pyqt5
 
