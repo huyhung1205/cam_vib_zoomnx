@@ -36,7 +36,6 @@ deactivate
 
 **Windows (PowerShell)**
 ```powershell
-cd JetsonZoom
 python -m venv .venv
 .\.venv\Scripts\pip install -r requirements.txt
 
