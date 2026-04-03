@@ -3,4 +3,5 @@
 # Example:
 # cam1|rtsp://user:pass@192.168.1.70:554/stream
 
-Camera70|rtsp://admin:L2bWoM8@@192.168.1.71:554/cam/realmonitor?channel=1&subtype=0
+Camera70|rtsp://admin:L2bWVztM@192.168.1.70:554/cam/realmonitor?channel=1&subtype=0
+Camera71|rtsp://admin:L2bWoM8@@192.168.1.71:554/cam/realmonitor?channel=1&subtype=0
