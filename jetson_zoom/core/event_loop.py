@@ -279,11 +279,21 @@ class EventLoop:
         try:
             import cv2  # type: ignore
         except Exception as e:  # pragma: no cover
+            detail = str(e).strip()
+            tls_hint = ""
+            if "static TLS block" in detail and sys.platform.startswith("linux"):
+                tls_hint = (
+                    " Detected 'static TLS block' issue (libgomp/OpenMP). "
+                    "Workaround: install libgomp1 and run with LD_PRELOAD, e.g. "
+                    "export LD_PRELOAD=/usr/lib/aarch64-linux-gnu/libgomp.so.1"
+                )
             raise ImportError(
                 "OpenCV (cv2) is required for DISPLAY_BACKEND=opencv. "
                 "On Windows: pip install opencv-python. "
                 "On Jetson: sudo apt-get install python3-opencv. "
                 "If you use a virtualenv on Jetson, create it with --system-site-packages."
+                f"{tls_hint}"
+                + (f" (Import error: {detail})" if detail else "")
             ) from e
         return cv2
 

@@ -149,6 +149,22 @@ Each module is self-contained:
 ```bash
 sudo apt-get install -y python3-opencv
 ```
+Nếu bạn dùng `venv` trên Jetson, hãy tạo venv với system packages:
+```bash
+python3 -m venv .venv --system-site-packages
+source .venv/bin/activate
+python3 -c "import cv2; print(cv2.__version__)"
+```
+
+Nếu gặp lỗi kiểu:
+`ImportError: ... libgomp.so.1: cannot allocate memory in static TLS block`
+thì thử:
+```bash
+sudo apt-get install -y libgomp1
+export LD_PRELOAD=/usr/lib/aarch64-linux-gnu/libgomp.so.1
+python3 -c "import cv2; print(cv2.__version__)"
+```
+(`LD_PRELOAD` path có thể khác: xem `ldconfig -p | grep libgomp.so.1`)
 
 ### Issue 2: Dùng `STREAM_BACKEND=gst` nhưng không mở được pipeline
 **Nguyên nhân thường gặp:**

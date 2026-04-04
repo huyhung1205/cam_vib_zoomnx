@@ -259,6 +259,7 @@ JetsonZoom/
 | Thiếu `cv2` / OpenCV | Windows: `pip install opencv-python`; Jetson: `sudo apt-get install python3-opencv` |
 | `STREAM_BACKEND=gst` không mở được pipeline | camera có thể là H.265: thử `GST_CODEC=h265`; hoặc thử `STREAM_BACKEND=opencv`; hoặc override `GST_PIPELINE_TEMPLATE` |
 | RTSP có ký tự đặc biệt trong password (vd `@`) | nên để app tự build URL từ `CAMERA_USERNAME/CAMERA_PASSWORD` (app sẽ tự URL-encode), hoặc tự encode (vd `@` → `%40`) |
+| Jetson import `cv2` lỗi `static TLS block` | cài `libgomp1` và chạy kèm `LD_PRELOAD=/usr/lib/aarch64-linux-gnu/libgomp.so.1` (xem `ldconfig -p | grep libgomp.so.1`) |
 | `ModuleNotFoundError` | chạy `pip install -r requirements.txt` trong venv |
 
 Xem thêm tại `QUICKSTART.md#troubleshooting`.
