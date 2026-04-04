@@ -242,7 +242,9 @@ class RTSPStreamHandler(threading.Thread):
             raise ImportError(
                 "OpenCV (cv2) is required for RTSP capture. "
                 "On Windows: pip install opencv-python. "
-                "On Jetson: sudo apt-get install python3-opencv."
+                "On Jetson: sudo apt-get install python3-opencv. "
+                "If you use a virtualenv on Jetson, create it with --system-site-packages "
+                "so it can see the apt-installed cv2."
             ) from e
         return cv2
 

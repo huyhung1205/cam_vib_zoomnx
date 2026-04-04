@@ -282,7 +282,8 @@ class EventLoop:
             raise ImportError(
                 "OpenCV (cv2) is required for DISPLAY_BACKEND=opencv. "
                 "On Windows: pip install opencv-python. "
-                "On Jetson: sudo apt-get install python3-opencv."
+                "On Jetson: sudo apt-get install python3-opencv. "
+                "If you use a virtualenv on Jetson, create it with --system-site-packages."
             ) from e
         return cv2
 

@@ -667,105 +667,28 @@ class MainWindow:
         self.window.resize(1600, 960)
         self.window.setMinimumSize(1280, 780)
 
+        # Keep QSS minimal; rely on QApplication palette for colors to avoid "text = background" issues.
         qss = """
-            QWidget#jetsonZoomRoot { background: #161616; color: #ededed; font-size: 12px; }
-            QWidget#jetsonZoomRoot QLabel { color: #ededed; }
-            QWidget:disabled { color: #8c8c8c; }
-
-            QLabel#panelSubtitle { color: #b6b6b6; }
-
             QFrame#videoCard, QFrame#videoStage, QGroupBox#cardGroup {
-                background: #1d1d1d;
                 border: 1px solid #2a2a2a;
                 border-radius: 12px;
             }
             QGroupBox#cardGroup { margin-top: 14px; padding: 12px; }
-            QGroupBox#cardGroup::title {
-                subcontrol-origin: margin;
-                subcontrol-position: top left;
-                padding: 0 8px;
-                color: #ededed;
-                font-weight: 600;
-            }
+            QGroupBox#cardGroup::title { subcontrol-origin: margin; subcontrol-position: top left; padding: 0 8px; }
 
             QLabel#videoSurface {
                 background: #0d0d0d;
                 border: 1px solid #2a2a2a;
                 border-radius: 12px;
-                color: #ededed;
             }
-
-            QFrame#joystickWidget {
-                background: #1a1a1a;
-                border: 1px solid #2a2a2a;
-                border-radius: 110px;
-            }
+            QFrame#joystickWidget { border: 1px solid #2a2a2a; border-radius: 110px; }
 
             QLabel#statusChip, QLabel#statusChipMuted {
+                border: 1px solid #2a2a2a;
                 border-radius: 999px;
                 padding: 7px 12px;
                 font-weight: 700;
-                border: 1px solid #2a2a2a;
-                background: #222222;
-                color: #ededed;
             }
-            QLabel#statusChipMuted { background: #1c1c1c; color: #cfcfcf; }
-
-            QLineEdit, QSpinBox, QComboBox {
-                background: #242424;
-                color: #ededed;
-                border: 1px solid #3a3a3a;
-                border-radius: 8px;
-                padding: 6px 8px;
-                selection-background-color: #3d3d3d;
-            }
-            QLineEdit:focus, QSpinBox:focus, QComboBox:focus { border-color: #6a6a6a; }
-            QLineEdit:disabled, QSpinBox:disabled, QComboBox:disabled {
-                background: #1b1b1b;
-                border-color: #2a2a2a;
-                color: #8c8c8c;
-            }
-            QComboBox QAbstractItemView {
-                background: #242424;
-                color: #ededed;
-                border: 1px solid #3a3a3a;
-                selection-background-color: #3d3d3d;
-                outline: 0;
-            }
-
-            QPushButton, QToolButton {
-                background: #2a2a2a;
-                color: #ededed;
-                border: 1px solid #3a3a3a;
-                border-radius: 10px;
-                padding: 8px 12px;
-                font-weight: 600;
-                min-height: 18px;
-            }
-            QToolButton { padding: 6px 10px; }
-            QPushButton:hover, QToolButton:hover { background: #333333; border-color: #4a4a4a; }
-            QPushButton:pressed, QToolButton:pressed { background: #1f1f1f; }
-            QPushButton:disabled, QToolButton:disabled {
-                background: #1b1b1b;
-                border-color: #2a2a2a;
-                color: #8c8c8c;
-            }
-
-            QCheckBox { color: #ededed; spacing: 8px; }
-            QCheckBox::indicator {
-                width: 16px;
-                height: 16px;
-                border-radius: 4px;
-                border: 1px solid #3a3a3a;
-                background: #242424;
-            }
-            QCheckBox::indicator:checked { background: #ededed; border-color: #ededed; }
-
-            QScrollArea { background: transparent; border: none; }
-            QScrollBar:vertical { background: transparent; width: 10px; margin: 6px 2px 6px 2px; }
-            QScrollBar::handle:vertical { background: #2a2a2a; min-height: 28px; border-radius: 5px; }
-            QScrollBar::handle:vertical:hover { background: #333333; }
-            QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical { height: 0; background: none; }
         """
 
         # Apply the stylesheet asynchronously so slow QSS parsing cannot block startup.
@@ -1500,6 +1423,30 @@ def run_qt_ui(sources_file: Path, initial_config: ApplicationConfig) -> int:
 
     app = QtWidgets.QApplication([])
     from jetson_zoom.state import state_path_from_env
+
+    # Use a stable monochrome palette (no theme toggle).
+    try:
+        app.setStyle("Fusion")
+    except Exception:
+        pass
+
+    try:
+        pal = QtGui.QPalette()
+        pal.setColor(QtGui.QPalette.ColorRole.Window, QtGui.QColor("#161616"))
+        pal.setColor(QtGui.QPalette.ColorRole.WindowText, QtGui.QColor("#ededed"))
+        pal.setColor(QtGui.QPalette.ColorRole.Base, QtGui.QColor("#1f1f1f"))
+        pal.setColor(QtGui.QPalette.ColorRole.AlternateBase, QtGui.QColor("#1a1a1a"))
+        pal.setColor(QtGui.QPalette.ColorRole.Text, QtGui.QColor("#ededed"))
+        pal.setColor(QtGui.QPalette.ColorRole.Button, QtGui.QColor("#2a2a2a"))
+        pal.setColor(QtGui.QPalette.ColorRole.ButtonText, QtGui.QColor("#ededed"))
+        pal.setColor(QtGui.QPalette.ColorRole.ToolTipBase, QtGui.QColor("#ededed"))
+        pal.setColor(QtGui.QPalette.ColorRole.ToolTipText, QtGui.QColor("#111111"))
+        pal.setColor(QtGui.QPalette.ColorRole.Highlight, QtGui.QColor("#3d3d3d"))
+        pal.setColor(QtGui.QPalette.ColorRole.HighlightedText, QtGui.QColor("#ffffff"))
+        pal.setColor(QtGui.QPalette.ColorRole.Link, QtGui.QColor("#9aa0a6"))
+        app.setPalette(pal)
+    except Exception:
+        pass
 
     win = MainWindow(
         UiPaths(sources_file=sources_file, state_file=state_path_from_env()),
