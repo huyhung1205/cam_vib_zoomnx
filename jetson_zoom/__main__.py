@@ -29,6 +29,14 @@ from jetson_zoom.ui.source_picker import pick_source_opencv
 from jetson_zoom.state import load_state, state_path_from_env
 
 
+def _ensure_utf8_stdio() -> None:
+    for stream in (sys.stdout, sys.stderr):
+        try:
+            stream.reconfigure(encoding="utf-8")  # type: ignore[attr-defined]
+        except Exception:
+            pass
+
+
 def create_application(config: ApplicationConfig):
     """Factory function to create and wire up all application components.
 
@@ -154,6 +162,8 @@ def main() -> int:
     logger = get_logger("JetsonZoom.main")
 
     try:
+        _ensure_utf8_stdio()
+
         logger.info("=" * 60)
         logger.info("JetsonZoom v1.0.0 - Realtime Camera Control")
         logger.info("=" * 60)
@@ -202,7 +212,7 @@ def main() -> int:
             try:
                 from jetson_zoom.ui.qt_app import run_qt_ui
                 return run_qt_ui(sources_file, config)
-            except ImportError as e:
+            except Exception as e:
                 logger.warning(f"Qt UI không khả dụng ({e}). Fallback sang UI OpenCV.")
                 args.ui = "opencv"
 

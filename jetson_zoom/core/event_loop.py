@@ -10,6 +10,8 @@ Responsibilities:
 import queue
 import threading
 import time
+import os
+import sys
 from typing import Optional, Dict, Any
 from abc import ABC, abstractmethod
 
@@ -104,8 +106,16 @@ class EventLoop:
         display_backend = (self.config.streaming.display_backend or "opencv").strip().lower()
         cv2 = None
         if display_backend == "opencv":
-            cv2 = self._import_cv2()
-            cv2.namedWindow(self.config.streaming.window_name, cv2.WINDOW_NORMAL)
+            # Extra safety: even if config says "opencv", don't hard-crash on headless Linux.
+            if sys.platform.startswith("linux") and not (os.getenv("DISPLAY") or os.getenv("WAYLAND_DISPLAY")):
+                self.logger.warning("No DISPLAY/WAYLAND_DISPLAY found; running with DISPLAY_BACKEND=none.")
+            else:
+                cv2 = self._import_cv2()
+                try:
+                    cv2.namedWindow(self.config.streaming.window_name, cv2.WINDOW_NORMAL)
+                except Exception as e:
+                    self.logger.warning(f"OpenCV window init failed; running headless. ({e})")
+                    cv2 = None
 
         try:
             while not self._stop_event.is_set():
@@ -230,7 +240,7 @@ class EventLoop:
                 (10, 30),
                 cv2.FONT_HERSHEY_SIMPLEX,
                 0.8,
-                (0, 255, 0),
+                (240, 240, 240),
                 2,
                 cv2.LINE_AA,
             )

@@ -5,6 +5,7 @@ from typing import Optional
 from pathlib import Path
 import json
 import os
+import sys
 from dotenv import load_dotenv
 
 
@@ -26,6 +27,14 @@ def _getenv_float(name: str, default: float) -> float:
         return float(value)
     except ValueError:
         return default
+
+
+def _is_headless_linux() -> bool:
+    if not sys.platform.startswith("linux"):
+        return False
+    if os.getenv("DISPLAY") or os.getenv("WAYLAND_DISPLAY"):
+        return False
+    return True
 
 
 @dataclass
@@ -137,6 +146,11 @@ class StreamingConfig:
         display_backend = os.getenv("DISPLAY_BACKEND", "opencv").strip().lower()
         window_name = os.getenv("WINDOW_NAME", "JetsonZoom")
         gst_pipeline_template = os.getenv("GST_PIPELINE_TEMPLATE")
+
+        # Safety: on Jetson/ARM it's common to run via SSH without X forwarding.
+        # Default to headless mode instead of crashing when OpenCV cannot create a window.
+        if display_backend in {"opencv", "auto", ""} and _is_headless_linux():
+            display_backend = "none"
 
         config = cls(
             target_fps=_getenv_int("TARGET_FPS", 30),

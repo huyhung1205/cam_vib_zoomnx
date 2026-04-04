@@ -65,6 +65,7 @@ Cấu hình `.env`:
 ```bash
 python -m jetson_zoom
 ```
+Nếu chạy qua SSH/headless (không có `DISPLAY`/Wayland), UI Qt có thể không mở được: app sẽ tự fallback sang UI OpenCV, và nếu vẫn headless thì sẽ chạy ở chế độ không hiển thị (có thể dừng bằng `Ctrl+C`).
 
 #### Giao diện tối giản OpenCV:
 ```bash

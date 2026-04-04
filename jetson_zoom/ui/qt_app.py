@@ -154,15 +154,6 @@ class MainWindow:
                 self.setFixedSize(220, 220)
                 self.setMouseTracking(True)
                 self.setCursor(_qt_enum(QtCore, "CursorShape", "CrossCursor"))
-                self.setStyleSheet(
-                    """
-                    QFrame#joystickWidget {
-                        background: rgba(8, 14, 24, 190);
-                        border: 1px solid rgba(125, 211, 252, 120);
-                        border-radius: 110px;
-                    }
-                    """
-                )
 
             def sizeHint(self):
                 return self.size()
@@ -603,7 +594,6 @@ class MainWindow:
         self.video.setMinimumSize(640, 360)
         self.video.setAlignment(align_center)
         self.video.setObjectName("videoSurface")
-        self.video.setStyleSheet("background: #091018; color: #cbd5e1;")
         self.video.setToolTip(
             "Lăn chuột: zoom quang học (ONVIF), nếu camera hỗ trợ.\n"
             "Giữ chuột trái + kéo: quay ngang/dọc (Pan/Tilt), nếu camera hỗ trợ."
@@ -676,127 +666,113 @@ class MainWindow:
         self.window.setCentralWidget(central)
         self.window.resize(1600, 960)
         self.window.setMinimumSize(1280, 780)
-        self.window.setStyleSheet(
-            """
+
+        qss = """
             QWidget#jetsonZoomRoot {
-                background: #0b1118;
-                color: #e5eef8;
+                background: #121212;
+                color: #f2f2f2;
                 font-size: 12px;
             }
+            QLabel#videoSurface {
+                background: #151515;
+                color: #f2f2f2;
+                border-radius: 14px;
+            }
+            QFrame#joystickWidget {
+                background: rgba(24, 24, 24, 210);
+                border: 1px solid rgba(255, 255, 255, 0.22);
+                border-radius: 110px;
+            }
             QFrame#videoCard, QFrame#videoStage {
-                background: #111926;
-                border: 1px solid rgba(255, 255, 255, 20);
-                border-radius: 20px;
+                background: #1a1a1a;
+                border: 1px solid rgba(255, 255, 255, 0.12);
+                border-radius: 16px;
             }
             QFrame#videoStage {
-                background: #081018;
+                background: #151515;
             }
             QGroupBox#cardGroup {
-                background: rgba(255, 255, 255, 0.03);
-                border: 1px solid rgba(255, 255, 255, 22);
-                border-radius: 18px;
-                margin-top: 16px;
-                padding: 14px;
+                background: rgba(255, 255, 255, 0.02);
+                border: 1px solid rgba(255, 255, 255, 0.12);
+                border-radius: 14px;
+                margin-top: 14px;
+                padding: 12px;
             }
             QGroupBox#cardGroup::title {
                 subcontrol-origin: margin;
                 subcontrol-position: top left;
                 padding: 0 10px;
-                color: #dbe7f3;
+                color: rgba(242, 242, 242, 210);
                 font-weight: 600;
             }
             QLabel#panelSubtitle {
-                color: #96a8bb;
+                color: rgba(242, 242, 242, 170);
             }
             QLabel#panelTitle {
                 font-size: 18px;
                 font-weight: 700;
-                color: #eff6ff;
+                color: #f7f7f7;
             }
             QLabel#statusChip, QLabel#statusChipMuted {
                 border-radius: 999px;
                 padding: 8px 14px;
                 font-weight: 700;
-                letter-spacing: 0.2px;
             }
             QLabel#statusChip {
-                background: rgba(74, 222, 128, 0.16);
-                color: #93f0ad;
-                border: 1px solid rgba(74, 222, 128, 0.26);
+                background: rgba(255, 255, 255, 0.06);
+                border: 1px solid rgba(255, 255, 255, 0.12);
             }
             QLabel#statusChipMuted {
-                background: rgba(125, 144, 170, 0.16);
-                color: #dbe7f3;
-                border: 1px solid rgba(148, 163, 184, 0.24);
-            }
-            QLabel#videoSurface {
-                border-radius: 18px;
+                background: rgba(255, 255, 255, 0.03);
+                border: 1px solid rgba(255, 255, 255, 0.08);
+                color: rgba(242, 242, 242, 180);
             }
             QLineEdit, QSpinBox, QComboBox {
-                background: rgba(8, 14, 22, 0.95);
-                color: #eaf2fb;
-                border: 1px solid rgba(148, 163, 184, 0.22);
-                border-radius: 10px;
-                padding: 8px 10px;
-                selection-background-color: #2563eb;
+                background: #1f1f1f;
+                color: #f2f2f2;
+                border: 1px solid rgba(255, 255, 255, 0.16);
+                border-radius: 8px;
+                padding: 6px 8px;
+                selection-background-color: rgba(255, 255, 255, 0.22);
             }
             QLineEdit:focus, QSpinBox:focus, QComboBox:focus {
-                border: 1px solid rgba(96, 165, 250, 0.72);
+                border: 1px solid rgba(255, 255, 255, 0.32);
             }
             QComboBox::drop-down {
                 border: none;
                 width: 24px;
             }
             QPushButton {
-                background: linear-gradient(180deg, #1f2b3a, #16202c);
-                color: #edf4fb;
-                border: 1px solid rgba(148, 163, 184, 0.18);
+                background: #2a2a2a;
+                color: #f2f2f2;
+                border: 1px solid rgba(255, 255, 255, 0.18);
                 border-radius: 12px;
-                padding: 9px 14px;
+                padding: 8px 12px;
                 font-weight: 600;
                 min-height: 18px;
             }
-            QWidget#videoOverlayHost QPushButton {
-                background: rgba(15, 23, 42, 0.82);
-                border: 1px solid rgba(148, 163, 184, 0.28);
-                padding: 8px 12px;
-            }
-            QWidget#videoOverlayHost QPushButton:hover {
-                background: rgba(30, 41, 59, 0.92);
-                border-color: rgba(96, 165, 250, 0.55);
-            }
+            QWidget#videoOverlayHost QPushButton { background: rgba(24, 24, 24, 0.92); }
             QPushButton:hover {
-                background: linear-gradient(180deg, #273549, #1a2432);
-                border-color: rgba(96, 165, 250, 0.42);
+                background: #333333;
+                border-color: rgba(255, 255, 255, 0.26);
             }
             QPushButton:pressed {
-                background: #0f1724;
+                background: #1a1a1a;
             }
             QCheckBox {
-                color: #dbe7f3;
+                color: #f2f2f2;
                 spacing: 8px;
             }
             QCheckBox::indicator {
                 width: 16px;
                 height: 16px;
                 border-radius: 4px;
-                border: 1px solid rgba(148, 163, 184, 0.35);
-                background: rgba(8, 14, 22, 0.95);
+                border: 1px solid rgba(255, 255, 255, 0.26);
+                background: #1f1f1f;
             }
             QCheckBox::indicator:checked {
-                background: #4f8cff;
-                border-color: #7fb1ff;
-            }
-            QSlider::groove:horizontal {
-                height: 8px;
-                background: rgba(148, 163, 184, 0.16);
-                border-radius: 4px;
-            }
-            QSlider::handle:horizontal {
-                width: 20px;
-                margin: -7px 0;
-                border-radius: 10px;
-                background: #7fb1ff;
+                background: rgba(255, 255, 255, 0.50);
+                border-color: rgba(255, 255, 255, 0.60);
             }
             QScrollArea {
                 background: transparent;
@@ -808,19 +784,30 @@ class MainWindow:
                 margin: 6px 2px 6px 2px;
             }
             QScrollBar::handle:vertical {
-                background: rgba(148, 163, 184, 0.35);
+                background: rgba(255, 255, 255, 0.22);
                 min-height: 28px;
                 border-radius: 5px;
             }
             QScrollBar::handle:vertical:hover {
-                background: rgba(125, 211, 252, 0.5);
+                background: rgba(255, 255, 255, 0.30);
             }
             QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
                 height: 0;
                 background: none;
             }
-            """
-        )
+        """
+
+        # Apply the stylesheet asynchronously so slow QSS parsing cannot block startup.
+        def _apply_qss() -> None:
+            try:
+                self.window.setStyleSheet(qss)
+            except Exception:
+                pass
+
+        try:
+            QtCore.QTimer.singleShot(0, _apply_qss)
+        except Exception:
+            _apply_qss()
 
         self._on_hold_toggled(self.check_hold.isChecked())
         self._on_auto_rtsp_toggled(self.check_auto_rtsp.isChecked())
@@ -835,7 +822,7 @@ class MainWindow:
         self.input_pass.setEchoMode(
             getattr(echo_mode_group, "Normal" if checked else "Password")
         )
-        self.btn_toggle_pass.setText("🙈" if checked else "👁")
+        self.btn_toggle_pass.setText("Ẩn" if checked else "Hiện")
 
     # Sources ----------------------------------------------------------------
 

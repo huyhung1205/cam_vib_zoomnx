@@ -99,8 +99,18 @@ class RTSPStreamHandler(threading.Thread):
             if is_gst:
                 source = self.streaming_config.gst_pipeline_template.format(rtsp_url=rtsp_url)
                 api_preference = getattr(cv2, "CAP_GSTREAMER", 0)
+                if not api_preference:
+                    # Some OpenCV builds (or minimal installs) do not include GStreamer.
+                    # Fall back to plain RTSP URL instead of hard-failing on a pipeline string.
+                    self.logger.warning(
+                        "OpenCV CAP_GSTREAMER is not available; falling back to backend=opencv."
+                    )
+                    source = rtsp_url
+                    api_preference = 0
+                    is_gst = False
 
-            self.logger.info(f"Opening RTSP source (backend={backend}): {rtsp_url}")
+            actual_backend = "gst" if is_gst else "opencv"
+            self.logger.info(f"Opening RTSP source (backend={backend} -> {actual_backend}): {rtsp_url}")
 
             self._capture = (
                 cv2.VideoCapture(source, api_preference)
