@@ -668,133 +668,104 @@ class MainWindow:
         self.window.setMinimumSize(1280, 780)
 
         qss = """
-            QWidget#jetsonZoomRoot {
-                background: #121212;
-                color: #f2f2f2;
-                font-size: 12px;
+            QWidget#jetsonZoomRoot { background: #161616; color: #ededed; font-size: 12px; }
+            QWidget#jetsonZoomRoot QLabel { color: #ededed; }
+            QWidget:disabled { color: #8c8c8c; }
+
+            QLabel#panelSubtitle { color: #b6b6b6; }
+
+            QFrame#videoCard, QFrame#videoStage, QGroupBox#cardGroup {
+                background: #1d1d1d;
+                border: 1px solid #2a2a2a;
+                border-radius: 12px;
             }
-            QLabel#videoSurface {
-                background: #151515;
-                color: #f2f2f2;
-                border-radius: 14px;
-            }
-            QFrame#joystickWidget {
-                background: rgba(24, 24, 24, 210);
-                border: 1px solid rgba(255, 255, 255, 0.22);
-                border-radius: 110px;
-            }
-            QFrame#videoCard, QFrame#videoStage {
-                background: #1a1a1a;
-                border: 1px solid rgba(255, 255, 255, 0.12);
-                border-radius: 16px;
-            }
-            QFrame#videoStage {
-                background: #151515;
-            }
-            QGroupBox#cardGroup {
-                background: rgba(255, 255, 255, 0.02);
-                border: 1px solid rgba(255, 255, 255, 0.12);
-                border-radius: 14px;
-                margin-top: 14px;
-                padding: 12px;
-            }
+            QGroupBox#cardGroup { margin-top: 14px; padding: 12px; }
             QGroupBox#cardGroup::title {
                 subcontrol-origin: margin;
                 subcontrol-position: top left;
-                padding: 0 10px;
-                color: rgba(242, 242, 242, 210);
+                padding: 0 8px;
+                color: #ededed;
                 font-weight: 600;
             }
-            QLabel#panelSubtitle {
-                color: rgba(242, 242, 242, 170);
+
+            QLabel#videoSurface {
+                background: #0d0d0d;
+                border: 1px solid #2a2a2a;
+                border-radius: 12px;
+                color: #ededed;
             }
-            QLabel#panelTitle {
-                font-size: 18px;
-                font-weight: 700;
-                color: #f7f7f7;
+
+            QFrame#joystickWidget {
+                background: #1a1a1a;
+                border: 1px solid #2a2a2a;
+                border-radius: 110px;
             }
+
             QLabel#statusChip, QLabel#statusChipMuted {
                 border-radius: 999px;
-                padding: 8px 14px;
+                padding: 7px 12px;
                 font-weight: 700;
+                border: 1px solid #2a2a2a;
+                background: #222222;
+                color: #ededed;
             }
-            QLabel#statusChip {
-                background: rgba(255, 255, 255, 0.06);
-                border: 1px solid rgba(255, 255, 255, 0.12);
-            }
-            QLabel#statusChipMuted {
-                background: rgba(255, 255, 255, 0.03);
-                border: 1px solid rgba(255, 255, 255, 0.08);
-                color: rgba(242, 242, 242, 180);
-            }
+            QLabel#statusChipMuted { background: #1c1c1c; color: #cfcfcf; }
+
             QLineEdit, QSpinBox, QComboBox {
-                background: #1f1f1f;
-                color: #f2f2f2;
-                border: 1px solid rgba(255, 255, 255, 0.16);
+                background: #242424;
+                color: #ededed;
+                border: 1px solid #3a3a3a;
                 border-radius: 8px;
                 padding: 6px 8px;
-                selection-background-color: rgba(255, 255, 255, 0.22);
+                selection-background-color: #3d3d3d;
             }
-            QLineEdit:focus, QSpinBox:focus, QComboBox:focus {
-                border: 1px solid rgba(255, 255, 255, 0.32);
+            QLineEdit:focus, QSpinBox:focus, QComboBox:focus { border-color: #6a6a6a; }
+            QLineEdit:disabled, QSpinBox:disabled, QComboBox:disabled {
+                background: #1b1b1b;
+                border-color: #2a2a2a;
+                color: #8c8c8c;
             }
-            QComboBox::drop-down {
-                border: none;
-                width: 24px;
+            QComboBox QAbstractItemView {
+                background: #242424;
+                color: #ededed;
+                border: 1px solid #3a3a3a;
+                selection-background-color: #3d3d3d;
+                outline: 0;
             }
-            QPushButton {
+
+            QPushButton, QToolButton {
                 background: #2a2a2a;
-                color: #f2f2f2;
-                border: 1px solid rgba(255, 255, 255, 0.18);
-                border-radius: 12px;
+                color: #ededed;
+                border: 1px solid #3a3a3a;
+                border-radius: 10px;
                 padding: 8px 12px;
                 font-weight: 600;
                 min-height: 18px;
             }
-            QWidget#videoOverlayHost QPushButton { background: rgba(24, 24, 24, 0.92); }
-            QPushButton:hover {
-                background: #333333;
-                border-color: rgba(255, 255, 255, 0.26);
+            QToolButton { padding: 6px 10px; }
+            QPushButton:hover, QToolButton:hover { background: #333333; border-color: #4a4a4a; }
+            QPushButton:pressed, QToolButton:pressed { background: #1f1f1f; }
+            QPushButton:disabled, QToolButton:disabled {
+                background: #1b1b1b;
+                border-color: #2a2a2a;
+                color: #8c8c8c;
             }
-            QPushButton:pressed {
-                background: #1a1a1a;
-            }
-            QCheckBox {
-                color: #f2f2f2;
-                spacing: 8px;
-            }
+
+            QCheckBox { color: #ededed; spacing: 8px; }
             QCheckBox::indicator {
                 width: 16px;
                 height: 16px;
                 border-radius: 4px;
-                border: 1px solid rgba(255, 255, 255, 0.26);
-                background: #1f1f1f;
+                border: 1px solid #3a3a3a;
+                background: #242424;
             }
-            QCheckBox::indicator:checked {
-                background: rgba(255, 255, 255, 0.50);
-                border-color: rgba(255, 255, 255, 0.60);
-            }
-            QScrollArea {
-                background: transparent;
-                border: none;
-            }
-            QScrollBar:vertical {
-                background: transparent;
-                width: 10px;
-                margin: 6px 2px 6px 2px;
-            }
-            QScrollBar::handle:vertical {
-                background: rgba(255, 255, 255, 0.22);
-                min-height: 28px;
-                border-radius: 5px;
-            }
-            QScrollBar::handle:vertical:hover {
-                background: rgba(255, 255, 255, 0.30);
-            }
-            QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
-                height: 0;
-                background: none;
-            }
+            QCheckBox::indicator:checked { background: #ededed; border-color: #ededed; }
+
+            QScrollArea { background: transparent; border: none; }
+            QScrollBar:vertical { background: transparent; width: 10px; margin: 6px 2px 6px 2px; }
+            QScrollBar::handle:vertical { background: #2a2a2a; min-height: 28px; border-radius: 5px; }
+            QScrollBar::handle:vertical:hover { background: #333333; }
+            QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical { height: 0; background: none; }
         """
 
         # Apply the stylesheet asynchronously so slow QSS parsing cannot block startup.
@@ -1472,8 +1443,19 @@ class MainWindow:
             zoom_x = running.mover.get_zoom_level()
             zoom_cap = running.onvif.is_zoom_supported()
             pt_cap = running.onvif.is_pan_tilt_supported()
-            last_error = running.onvif.get_last_error()
-            err_text = f" | Err: {last_error}" if last_error else ""
+            onvif_err = running.onvif.get_last_error()
+            rtsp_err = running.rtsp.get_last_error() if hasattr(running, "rtsp") else None
+
+            def _short_err(text: str, limit: int = 160) -> str:
+                t = (text or "").strip()
+                return (t[: limit - 1] + "…") if len(t) > limit else t
+
+            err_parts = []
+            if rtsp_err:
+                err_parts.append(f"RTSP: {_short_err(rtsp_err)}")
+            if onvif_err:
+                err_parts.append(f"ONVIF: {_short_err(onvif_err)}")
+            err_text = f" | Err: {' | '.join(err_parts)}" if err_parts else ""
             zoom_text = f"{zoom_x:.2f}" if zoom_x is not None else "n/a"
             zoom_cap_text = "OK" if zoom_cap is True else ("NO" if zoom_cap is False else "?")
             pt_cap_text = "OK" if pt_cap is True else ("NO" if pt_cap is False else "?")
@@ -1481,9 +1463,15 @@ class MainWindow:
                 f"Status: running | ONVIF: {'OK' if onvif_ready else 'NO'} | ZoomCap: {zoom_cap_text} | PanTiltCap: {pt_cap_text} | Zoom.x: {zoom_text}{err_text}"
             )
             if hasattr(self, "label_header_status"):
-                self.label_header_status.setText("Connected" if onvif_ready else "Connecting")
+                if rtsp_err:
+                    self.label_header_status.setText("RTSP Error")
+                else:
+                    self.label_header_status.setText("Connected" if onvif_ready else "Connecting")
             if hasattr(self, "label_status_badge"):
-                self.label_status_badge.setText("Streaming" if onvif_ready else "Booting")
+                if rtsp_err:
+                    self.label_status_badge.setText("Error")
+                else:
+                    self.label_status_badge.setText("Streaming" if onvif_ready else "Booting")
         else:
             if hasattr(self, "label_header_status"):
                 self.label_header_status.setText("Ready")

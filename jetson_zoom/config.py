@@ -6,6 +6,7 @@ from pathlib import Path
 import json
 import os
 import sys
+from urllib.parse import quote
 from dotenv import load_dotenv
 
 
@@ -63,10 +64,41 @@ class CameraConfig:
             Complete RTSP URL
         """
         if self.rtsp_url:
-            return self.rtsp_url
+            # Best-effort sanitize credentials (common pitfall: '@' in password without URL-encoding).
+            return self._normalize_rtsp_url(self.rtsp_url)
 
-        auth = f"{self.username}:{self.password}@" if self.username else ""
+        if self.username:
+            user = quote(self.username, safe="")
+            pwd = quote(self.password or "", safe="")
+            auth = f"{user}:{pwd}@"
+        else:
+            auth = ""
         return f"rtsp://{auth}{self.host}:{self.port_rtsp}/stream"
+
+    @staticmethod
+    def _normalize_rtsp_url(url: str) -> str:
+        raw = (url or "").strip()
+        if not raw.lower().startswith("rtsp://"):
+            return raw
+
+        rest = raw[len("rtsp://") :]
+        slash_idx = rest.find("/")
+        authority = rest if slash_idx < 0 else rest[:slash_idx]
+        tail = "" if slash_idx < 0 else rest[slash_idx:]
+
+        at_idx = authority.rfind("@")
+        if at_idx < 0:
+            return raw
+
+        userinfo = authority[:at_idx]
+        hostport = authority[at_idx + 1 :]
+        if ":" not in userinfo:
+            return raw
+
+        user, pwd = userinfo.split(":", 1)
+        user_enc = quote(user, safe="%")
+        pwd_enc = quote(pwd, safe="%")
+        return f"rtsp://{user_enc}:{pwd_enc}@{hostport}{tail}"
 
     def build_onvif_url(self) -> str:
         """Build ONVIF URL from components.
@@ -131,9 +163,18 @@ class StreamingConfig:
     window_name: str = "JetsonZoom"
 
     # GStreamer pipeline
+    # Codec for the default Jetson pipelines: auto|h264|h265
+    gst_codec: str = "auto"
     gst_pipeline_template: str = (
         "rtspsrc location={rtsp_url} latency=0 ! "
         "rtph264depay ! h264parse ! nvv4l2decoder ! "
+        "nvvidconv ! video/x-raw,format=BGRx ! "
+        "videoconvert ! video/x-raw,format=BGR ! "
+        "appsink drop=true sync=false"
+    )
+    gst_pipeline_template_h265: str = (
+        "rtspsrc location={rtsp_url} latency=0 ! "
+        "rtph265depay ! h265parse ! nvv4l2decoder ! "
         "nvvidconv ! video/x-raw,format=BGRx ! "
         "videoconvert ! video/x-raw,format=BGR ! "
         "appsink drop=true sync=false"
@@ -146,6 +187,10 @@ class StreamingConfig:
         display_backend = os.getenv("DISPLAY_BACKEND", "opencv").strip().lower()
         window_name = os.getenv("WINDOW_NAME", "JetsonZoom")
         gst_pipeline_template = os.getenv("GST_PIPELINE_TEMPLATE")
+        gst_pipeline_template_h265 = os.getenv("GST_PIPELINE_TEMPLATE_H265")
+        gst_codec = (os.getenv("GST_CODEC", "auto") or "auto").strip().lower()
+        if gst_codec not in {"auto", "h264", "h265"}:
+            gst_codec = "auto"
 
         # Safety: on Jetson/ARM it's common to run via SSH without X forwarding.
         # Default to headless mode instead of crashing when OpenCV cannot create a window.
@@ -160,10 +205,13 @@ class StreamingConfig:
             backend=backend if backend else "auto",
             display_backend=display_backend if display_backend else "opencv",
             window_name=window_name,
+            gst_codec=gst_codec,
         )
 
         if gst_pipeline_template:
             config.gst_pipeline_template = gst_pipeline_template
+        if gst_pipeline_template_h265:
+            config.gst_pipeline_template_h265 = gst_pipeline_template_h265
 
         return config
 

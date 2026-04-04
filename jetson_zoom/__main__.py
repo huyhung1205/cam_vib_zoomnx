@@ -59,6 +59,8 @@ def create_application(config: ApplicationConfig):
         output_queue=frame_queue,
     )
     rtsp_handler.start()
+    if not rtsp_handler.wait_until_opened(timeout_s=float(getattr(config.camera, "rtsp_timeout", 10))):
+        raise RuntimeError(rtsp_handler.get_last_error() or "Failed to open RTSP stream.")
 
     # Step 3: Initialize command queue (main thread -> ONVIF worker)
     command_queue = queue.Queue(maxsize=10)

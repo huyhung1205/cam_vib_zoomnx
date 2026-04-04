@@ -37,6 +37,17 @@ class AppController:
             output_queue=frame_queue,
         )
         rtsp.start()
+        if not rtsp.wait_until_opened(timeout_s=float(getattr(config.camera, "rtsp_timeout", 10))):
+            err = rtsp.get_last_error() or "Failed to open RTSP stream."
+            try:
+                rtsp.stop()
+            except Exception:
+                pass
+            try:
+                rtsp.join(timeout=2.0)
+            except Exception:
+                pass
+            raise RuntimeError(err)
 
         command_queue: queue.Queue = queue.Queue(maxsize=10)
         onvif = ONVIFClient(
@@ -101,4 +112,3 @@ class AppController:
                 break
 
         return latest
-

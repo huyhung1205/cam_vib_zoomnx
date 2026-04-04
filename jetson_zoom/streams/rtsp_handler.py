@@ -9,6 +9,8 @@ This module intentionally avoids importing platform-specific bindings at import 
 so the project can be imported on both Windows and Jetson without crashing.
 """
 
+from __future__ import annotations
+
 import threading
 import queue
 import time
@@ -16,6 +18,7 @@ from dataclasses import dataclass
 from typing import Optional, Callable, Any
 import sys
 import platform
+from urllib.parse import urlparse
 
 from jetson_zoom.config import StreamingConfig, CameraConfig
 from jetson_zoom.logger import get_logger
@@ -70,6 +73,9 @@ class RTSPStreamHandler(threading.Thread):
 
         self._stop_event = threading.Event()
         self._capture: Any = None
+        self._opened_event = threading.Event()
+        self._open_ok: Optional[bool] = None
+        self._last_error: Optional[str] = None
 
         # Performance tracking
         self._frame_count = 0
@@ -94,36 +100,11 @@ class RTSPStreamHandler(threading.Thread):
                 }
                 is_gst = is_jetson_like
 
-            source = rtsp_url
-            api_preference = 0
-            if is_gst:
-                source = self.streaming_config.gst_pipeline_template.format(rtsp_url=rtsp_url)
-                api_preference = getattr(cv2, "CAP_GSTREAMER", 0)
-                if not api_preference:
-                    # Some OpenCV builds (or minimal installs) do not include GStreamer.
-                    # Fall back to plain RTSP URL instead of hard-failing on a pipeline string.
-                    self.logger.warning(
-                        "OpenCV CAP_GSTREAMER is not available; falling back to backend=opencv."
-                    )
-                    source = rtsp_url
-                    api_preference = 0
-                    is_gst = False
-
-            actual_backend = "gst" if is_gst else "opencv"
-            self.logger.info(f"Opening RTSP source (backend={backend} -> {actual_backend}): {rtsp_url}")
-
-            self._capture = (
-                cv2.VideoCapture(source, api_preference)
-                if api_preference
-                else cv2.VideoCapture(source)
-            )
-
-            if not self._capture.isOpened():
-                raise RuntimeError(
-                    "Failed to open video source. "
-                    "On Jetson, try STREAM_BACKEND=gst and ensure OpenCV has GStreamer enabled. "
-                    "Otherwise set CAMERA_RTSP_URL to a valid RTSP URL."
-                )
+            masked_rtsp = self._mask_url(rtsp_url)
+            self.logger.info(f"Opening RTSP source (backend={backend}): {masked_rtsp}")
+            self._open_capture(cv2, rtsp_url, prefer_gst=is_gst)
+            self._open_ok = True
+            self._opened_event.set()
 
             self._last_ok_time = time.time()
 
@@ -164,10 +145,94 @@ class RTSPStreamHandler(threading.Thread):
         except Exception as e:
             error_msg = f"RTSP stream error: {e}"
             self.logger.error(error_msg, exc_info=True)
+            self._last_error = error_msg
+            self._open_ok = False if self._open_ok is None else self._open_ok
+            self._opened_event.set()
             if self.error_callback:
                 self.error_callback(error_msg)
         finally:
             self._cleanup()
+            self._opened_event.set()
+
+    @staticmethod
+    def _mask_url(url: str) -> str:
+        try:
+            parsed = urlparse(url)
+            if not parsed.username and not parsed.password:
+                return url
+            host = parsed.hostname or ""
+            port = f":{parsed.port}" if parsed.port else ""
+            user = parsed.username or ""
+            auth = f"{user}:***@" if user else "***@"
+            path = parsed.path or ""
+            query = f"?{parsed.query}" if parsed.query else ""
+            return f"{parsed.scheme}://{auth}{host}{port}{path}{query}"
+        except Exception:
+            return url
+
+    def _open_capture(self, cv2, rtsp_url: str, prefer_gst: bool) -> None:
+        candidates: list[tuple[str, str, int]] = []
+
+        if prefer_gst:
+            api_preference = getattr(cv2, "CAP_GSTREAMER", 0)
+            if not api_preference:
+                self.logger.warning(
+                    "OpenCV CAP_GSTREAMER is not available; falling back to backend=opencv."
+                )
+            else:
+                codec = (getattr(self.streaming_config, "gst_codec", "auto") or "auto").strip().lower()
+                templates: list[str] = []
+                if codec == "h264":
+                    templates = [self.streaming_config.gst_pipeline_template]
+                elif codec == "h265":
+                    templates = [self.streaming_config.gst_pipeline_template_h265]
+                else:
+                    templates = [
+                        self.streaming_config.gst_pipeline_template,
+                        self.streaming_config.gst_pipeline_template_h265,
+                    ]
+
+                seen: set[str] = set()
+                for tmpl in templates:
+                    if tmpl in seen:
+                        continue
+                    seen.add(tmpl)
+                    candidates.append(("gst", tmpl.format(rtsp_url=rtsp_url), api_preference))
+
+        # Always include a plain RTSP URL fallback.
+        candidates.append(("opencv", rtsp_url, 0))
+
+        last_open_error: Optional[str] = None
+        for mode, source, api_preference in candidates:
+            try:
+                cap = (
+                    cv2.VideoCapture(source, api_preference)
+                    if api_preference
+                    else cv2.VideoCapture(source)
+                )
+                if cap is not None and cap.isOpened():
+                    self._capture = cap
+                    self.logger.info(f"RTSP capture opened (mode={mode}).")
+                    return
+
+                try:
+                    if cap is not None:
+                        cap.release()
+                except Exception:
+                    pass
+
+                last_open_error = f"open_failed(mode={mode})"
+            except Exception as e:
+                last_open_error = f"open_error(mode={mode}): {e}"
+
+        self._last_error = (
+            "Failed to open video source. "
+            "Tried GStreamer (H.264/H.265) and OpenCV fallback. "
+            "Common causes: wrong RTSP URL, camera codec mismatch (H.265 vs H.264), "
+            "missing GStreamer/NVIDIA plugins on Jetson, or OpenCV without GStreamer."
+            + (f" ({last_open_error})" if last_open_error else "")
+        )
+        raise RuntimeError(self._last_error)
 
     @staticmethod
     def _import_cv2():
@@ -206,6 +271,16 @@ class RTSPStreamHandler(threading.Thread):
         """Stop the stream handler gracefully."""
         self.logger.info("Stopping RTSP stream...")
         self._stop_event.set()
+
+    def wait_until_opened(self, timeout_s: float) -> bool:
+        try:
+            self._opened_event.wait(timeout=max(0.0, float(timeout_s)))
+        except Exception:
+            return False
+        return bool(self._open_ok)
+
+    def get_last_error(self) -> Optional[str]:
+        return self._last_error
 
     def _cleanup(self) -> None:
         """Release capture resources."""
