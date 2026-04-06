@@ -63,6 +63,7 @@ Cấu hình `.env`:
 
 #### Giao diện Qt thân thiện, có ô nhập RTSP
 ```bash
+export LD_PRELOAD=/usr/lib/aarch64-linux-gnu/libgomp.so.1
 python -m jetson_zoom
 ```
 Nếu chạy qua SSH/headless (không có `DISPLAY`/Wayland), UI Qt có thể không mở được: app sẽ tự fallback sang UI OpenCV, và nếu vẫn headless thì sẽ chạy ở chế độ không hiển thị (có thể dừng bằng `Ctrl+C`).
